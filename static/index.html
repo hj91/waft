@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<!-- Copyright 2026 Bufferstack.IO Analytics Technology LLP
+     SPDX-License-Identifier: Apache-2.0 -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <title>Waft</title>
+  <link rel="stylesheet" href="/app.css" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232F5BEA'/%3E%3Cpath d='M8 20h10l-3-3m3 3-3 3M24 12H14l3-3m-3 3 3 3' stroke='white' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <noscript>Waft needs JavaScript for end-to-end encryption.</noscript>
+
+  <!-- Sign in / create account -->
+  <main id="authView" class="auth" hidden>
+    <section class="auth-card">
+      <h1 class="brand"><span class="brand-mark" aria-hidden="true"></span>Waft</h1>
+      <p class="auth-lede">Pushes, clipboard and files between your own devices. Encrypted before they leave this browser.</p>
+      <form id="authForm" novalidate>
+        <label>Email<input id="authEmail" type="email" autocomplete="username" required /></label>
+        <label id="authNameRow" hidden>Your name<input id="authName" type="text" autocomplete="name" maxlength="64" /></label>
+        <label>Password<input id="authPassword" type="password" autocomplete="current-password" required /></label>
+        <p id="authHint" class="hint" hidden></p>
+        <p id="authError" class="error" role="alert" hidden></p>
+        <button id="authSubmit" class="primary" type="submit">Sign in</button>
+      </form>
+      <p class="auth-switch"><span id="authSwitchText">New here?</span> <button id="authSwitch" class="link" type="button">Create an account</button></p>
+    </section>
+  </main>
+
+  <!-- Unlock E2EE -->
+  <main id="unlockView" class="auth" hidden>
+    <section class="auth-card">
+      <h1 class="brand"><span class="brand-mark" aria-hidden="true"></span>Unlock</h1>
+      <p id="unlockLede" class="auth-lede"></p>
+      <form id="unlockForm" novalidate>
+        <label>Encryption passphrase<input id="unlockPass" type="password" autocomplete="off" required /></label>
+        <label id="unlockConfirmRow" hidden>Repeat passphrase<input id="unlockConfirm" type="password" autocomplete="off" /></label>
+        <label class="check"><input id="unlockRemember" type="checkbox" /> Keep unlocked until this tab closes</label>
+        <p id="unlockError" class="error" role="alert" hidden></p>
+        <button id="unlockSubmit" class="primary" type="submit">Unlock</button>
+      </form>
+      <p class="auth-switch"><button id="unlockSignOut" class="link" type="button">Sign out</button></p>
+    </section>
+  </main>
+
+  <!-- Application -->
+  <div id="appView" class="app" hidden>
+    <header class="topbar">
+      <span class="brand small"><span class="brand-mark" aria-hidden="true"></span>Waft</span>
+      <span id="connPill" class="pill" data-state="offline" title="Connection">Offline</span>
+      <nav class="topnav">
+        <button id="navStream" class="tab" aria-current="page" type="button">Stream</button>
+        <button id="navSettings" class="tab" type="button">Settings</button>
+      </nav>
+      <span id="whoami" class="who"></span>
+    </header>
+
+    <!-- Stream -->
+    <div id="streamView" class="layout">
+      <aside class="devices" aria-labelledby="devicesTitle">
+        <h2 id="devicesTitle">Devices</h2>
+        <ul id="deviceList" class="device-list"></ul>
+        <p class="hint">Connect a computer with <code>waftd</code> or the <code>waft</code> CLI using an API token from Settings.</p>
+      </aside>
+
+      <section class="center">
+        <form id="composer" class="composer" novalidate>
+          <div class="composer-tabs" role="tablist">
+            <button type="button" role="tab" data-kind="note" aria-selected="true">Note</button>
+            <button type="button" role="tab" data-kind="link" aria-selected="false">Link</button>
+            <button type="button" role="tab" data-kind="clip" aria-selected="false">Clipboard</button>
+            <button type="button" role="tab" data-kind="file" aria-selected="false">File</button>
+          </div>
+          <div class="composer-body">
+            <input id="cTitle" type="text" placeholder="Title" maxlength="200" />
+            <input id="cUrl" type="url" placeholder="https://" hidden />
+            <textarea id="cBody" rows="3" placeholder="Message"></textarea>
+            <div id="cFileRow" class="file-row" hidden>
+              <input id="cFile" type="file" />
+              <div class="progress" hidden><div id="cProgress"></div></div>
+            </div>
+          </div>
+          <div class="composer-foot">
+            <label class="to">To <select id="cTarget"><option value="*">All devices</option></select></label>
+            <span id="cStatus" class="status" aria-live="polite"></span>
+            <button id="cSend" class="primary" type="submit">Send</button>
+          </div>
+        </form>
+
+        <div class="stream-head">
+          <h2>Recent</h2>
+          <button id="clearStream" class="link" type="button">Clear view</button>
+        </div>
+        <ol id="stream" class="stream" aria-live="polite"></ol>
+        <p id="streamEmpty" class="empty">Nothing yet. Send a note to your other devices, or pipe something in with <code>echo hi | waft</code>.</p>
+      </section>
+    </div>
+
+    <!-- Settings -->
+    <div id="settingsView" class="settings" hidden>
+      <section class="panel">
+        <h2>Account</h2>
+        <form id="profileForm" class="row-form">
+          <label>Name<input id="pName" type="text" maxlength="64" /></label>
+          <button class="secondary" type="submit">Save name</button>
+        </form>
+        <dl class="facts">
+          <dt>Email</dt><dd id="pEmail"></dd>
+          <dt>Storage</dt><dd id="pStorage"></dd>
+          <dt>This browser</dt><dd><span id="pDevice"></span></dd>
+        </dl>
+        <form id="selfNameForm" class="row-form">
+          <label>Name of this browser<input id="pSelfName" type="text" maxlength="64" /></label>
+          <button class="secondary" type="submit">Rename</button>
+        </form>
+      </section>
+
+      <section class="panel">
+        <h2>Password</h2>
+        <form id="pwForm" class="stack-form">
+          <label>Current password<input id="pwCurrent" type="password" autocomplete="current-password" /></label>
+          <label>New password<input id="pwNew" type="password" autocomplete="new-password" /></label>
+          <p class="hint">Changing it signs out every other browser. API tokens keep working.</p>
+          <button class="secondary" type="submit">Change password</button>
+        </form>
+      </section>
+
+      <section class="panel">
+        <h2>API tokens</h2>
+        <p class="hint">Tokens let <code>waft</code> and <code>waftd</code> act for your account. Each one is shown only once.</p>
+        <form id="tokenForm" class="row-form">
+          <label>Name<input id="tName" type="text" maxlength="64" placeholder="Work laptop daemon" /></label>
+          <label>Expires<select id="tExpiry">
+            <option value="0">Never</option><option value="30">In 30 days</option>
+            <option value="90" selected>In 90 days</option><option value="365">In a year</option>
+          </select></label>
+          <button class="secondary" type="submit">Create token</button>
+        </form>
+        <div id="tokenReveal" class="reveal" hidden>
+          <p>Copy this token now. It will not be shown again.</p>
+          <div class="copy-row"><code id="tokenValue"></code><button id="tokenCopy" class="secondary" type="button">Copy</button></div>
+          <pre id="tokenSnippet"></pre>
+        </div>
+        <ul id="tokenList" class="list"></ul>
+      </section>
+
+      <section class="panel">
+        <h2>Signed-in browsers</h2>
+        <ul id="sessionList" class="list"></ul>
+        <button id="logoutAll" class="secondary" type="button">Sign out everywhere</button>
+      </section>
+
+      <section class="panel">
+        <h2>Encryption</h2>
+        <p class="hint">Messages and files are encrypted with a key derived from your passphrase and your account's own salt. The server only stores ciphertext and cannot recover a forgotten passphrase.</p>
+        <button id="lockNow" class="secondary" type="button">Lock this browser</button>
+        <details class="danger-zone">
+          <summary>Change passphrase for new messages</summary>
+          <p class="hint">Devices must all be set to the new passphrase. Messages and files encrypted with the old one stay unreadable under the new one.</p>
+          <button id="resetKey" class="danger" type="button">Set a new passphrase</button>
+        </details>
+      </section>
+
+      <section class="panel">
+        <h2>Activity</h2>
+        <ul id="auditList" class="list compact"></ul>
+      </section>
+
+      <section class="panel">
+        <h2>Diagnostics</h2>
+        <dl class="facts">
+          <dt>Resume cursor</dt><dd id="dCursor">0</dd>
+          <dt>Last heartbeat</dt><dd id="dBeat">never</dd>
+          <dt>Node</dt><dd id="dNode">unknown</dd>
+        </dl>
+        <button id="linkToggle" class="secondary" type="button">Simulate link break</button>
+        <ol id="connLog" class="log"></ol>
+      </section>
+
+      <section class="panel">
+        <h2>Delete account</h2>
+        <form id="deleteForm" class="row-form">
+          <label>Password<input id="delPass" type="password" autocomplete="current-password" /></label>
+          <button class="danger" type="submit">Delete account and all data</button>
+        </form>
+      </section>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>
