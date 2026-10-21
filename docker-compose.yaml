@@ -1,0 +1,91 @@
+# Waft cluster: 2 stateless nodes + PostgreSQL 16 + Redis 7 + Nginx.
+#
+#   cp .env.example .env   # then set real passwords
+#   docker compose up --build -d
+#
+# Only Nginx is published. PostgreSQL and Redis stay on the internal network.
+
+x-waft-node: &waft-node
+  build: .
+  restart: unless-stopped
+  environment: &waft-env
+    WAFT_ADDR: ":8080"
+    WAFT_PG_DSN: "postgres://waft:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/waft?sslmode=disable"
+    WAFT_REDIS_ADDR: "redis:6379"
+    WAFT_REDIS_PASSWORD: "${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}"
+    WAFT_UPLOAD_DIR: "/app/uploads"
+    WAFT_TRUST_PROXY: "true"
+    # Keep true in production behind TLS. Set false only for http://localhost testing.
+    WAFT_COOKIE_SECURE: "${WAFT_COOKIE_SECURE:-true}"
+    WAFT_ALLOW_SIGNUP: "${WAFT_ALLOW_SIGNUP:-true}"
+    WAFT_USER_QUOTA: "${WAFT_USER_QUOTA:-10737418240}"
+    WAFT_MAX_FILE_SIZE: "${WAFT_MAX_FILE_SIZE:-2147483648}"
+  volumes:
+    - shared_uploads:/app/uploads
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  networks: [backend]
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: waft
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}"
+      POSTGRES_DB: waft
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U waft -d waft"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    networks: [backend]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep PONG"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    environment:
+      REDIS_PASSWORD: "${REDIS_PASSWORD}"
+    networks: [backend]
+
+  waft-alpha:
+    <<: *waft-node
+    environment:
+      <<: *waft-env
+      WAFT_NODE_ID: node-alpha
+
+  waft-beta:
+    <<: *waft-node
+    environment:
+      <<: *waft-env
+      WAFT_NODE_ID: node-beta
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "${WAFT_HTTP_PORT:-8080}:8080"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - waft-alpha
+      - waft-beta
+    networks: [backend]
+
+volumes:
+  shared_uploads:
+  pgdata:
+
+networks:
+  backend:
